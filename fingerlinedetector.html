@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Finger Line Detector</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0f;
+    color: #fff;
+    font-family: 'Orbitron', monospace;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  h1 {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 1.1rem;
+    letter-spacing: 3px;
+    background: linear-gradient(90deg, #00f0ff, #ff00c8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    z-index: 10;
+    white-space: nowrap;
+    text-shadow: none;
+  }
+
+  #subtitle {
+    position: fixed;
+    top: 48px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #666;
+    z-index: 10;
+    white-space: nowrap;
+  }
+
+  #container {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  video {
+    position: absolute;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    opacity: 1;
+  }
+
+  canvas {
+    position: absolute;
+    width: 100%; height: 100%;
+    transform: scaleX(-1);
+  }
+
+  #legend {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    justify-content: center;
+    font-size: 0.6rem;
+    letter-spacing: 1.5px;
+    z-index: 10;
+  }
+
+  .leg {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .dot {
+    width: 18px; height: 5px;
+    border-radius: 3px;
+  }
+
+  #status {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    color: #555;
+    z-index: 10;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<h1>✦ FINGER LINE DETECTOR ✦</h1>
+<div id="subtitle">POINT MATCHING FINGERS TOGETHER TO DRAW COLORED LINES</div>
+
+<div id="container">
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+</div>
+
+<div id="legend">
+  <div class="leg"><div class="dot" style="background:#00f0ff"></div> THUMB</div>
+  <div class="leg"><div class="dot" style="background:#ff3cac"></div> INDEX</div>
+  <div class="leg"><div class="dot" style="background:#ffe500"></div> MIDDLE</div>
+  <div class="leg"><div class="dot" style="background:#7fff00"></div> RING</div>
+  <div class="leg"><div class="dot" style="background:#ff6b00"></div> PINKY</div>
+</div>
+
+<div id="status" id="status">LOADING MEDIAPIPE...</div>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+
+// Finger tip landmark indices
+const FINGER_TIPS = {
+  thumb:  { index: 4,  color: '#00f0ff', glow: '#00f0ff88' },
+  index:  { index: 8,  color: '#ff3cac', glow: '#ff3cac88' },
+  middle: { index: 12, color: '#ffe500', glow: '#ffe50088' },
+  ring:   { index: 16, color: '#7fff00', glow: '#7fff0088' },
+  pinky:  { index: 20, color: '#ff6b00', glow: '#ff6b0088' },
+};
+
+const fingerKeys = Object.keys(FINGER_TIPS);
+
+let lastResults = null;
+
+function resizeCanvas() {
+  const cont = document.getElementById('container');
+  canvas.width  = cont.clientWidth;
+  canvas.height = cont.clientHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+function getLandmarkPx(lm) {
+  return {
+    x: lm.x * canvas.width,
+    y: lm.y * canvas.height
+  };
+}
+
+function drawHand(landmarks, alpha = 1) {
+  // Draw all skeleton lines lightly
+  ctx.save();
+  ctx.globalAlpha = 0.18 * alpha;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+
+  const connections = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [0,9],[9,10],[10,11],[11,12],
+    [0,13],[13,14],[14,15],[15,16],
+    [0,17],[17,18],[18,19],[19,20],
+    [5,9],[9,13],[13,17]
+  ];
+
+  for (const [a, b] of connections) {
+    const pa = getLandmarkPx(landmarks[a]);
+    const pb = getLandmarkPx(landmarks[b]);
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+    ctx.stroke();
+  }
+
+  // Draw fingertip dots
+  for (const key of fingerKeys) {
+    const { index, color } = FINGER_TIPS[key];
+    const p = getLandmarkPx(landmarks[index]);
+    ctx.globalAlpha = 0.9 * alpha;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawConnections(hands) {
+  if (hands.length < 2) return;
+
+  const h1 = hands[0];
+  const h2 = hands[1];
+
+  for (const key of fingerKeys) {
+    const { index, color, glow } = FINGER_TIPS[key];
+
+    const p1 = getLandmarkPx(h1[index]);
+    const p2 = getLandmarkPx(h2[index]);
+
+    const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+    const maxDist = canvas.width * 0.7;
+    if (dist > maxDist) continue; // don't draw if too far
+
+    // Glow layers
+    for (let r = 18; r >= 2; r -= 4) {
+      ctx.save();
+      ctx.strokeStyle = glow;
+      ctx.lineWidth = r;
+      ctx.globalAlpha = 0.04;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 30;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Core line
+    const grad = ctx.createLinearGradient(p1.x, p1.y, p2.x, p2.y);
+    grad.addColorStop(0, color);
+    grad.addColorStop(0.5, '#ffffff');
+    grad.addColorStop(1, color);
+
+    ctx.save();
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 3.5;
+    ctx.globalAlpha = 0.95;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+    ctx.restore();
+
+    // Endpoint circles
+    for (const p of [p1, p2]) {
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 15;
+      ctx.globalAlpha = 0.95;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Label in the middle
+    const mx = (p1.x + p2.x) / 2;
+    const my = (p1.y + p2.y) / 2;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.font = 'bold 10px Orbitron, monospace';
+    ctx.globalAlpha = 0.85;
+    ctx.textAlign = 'center';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.fillText(key.toUpperCase(), mx, my - 10);
+    ctx.restore();
+  }
+}
+
+function onResults(results) {
+  lastResults = results;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // No dark overlay — show real camera feed
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    statusEl.textContent = results.multiHandLandmarks.length === 1
+      ? 'ONE HAND DETECTED — SHOW BOTH HANDS'
+      : 'TWO HANDS DETECTED ✦ MATCH YOUR FINGERS!';
+
+    for (const lm of results.multiHandLandmarks) {
+      drawHand(lm);
+    }
+
+    if (results.multiHandLandmarks.length >= 2) {
+      drawConnections(results.multiHandLandmarks);
+    }
+  } else {
+    statusEl.textContent = 'NO HANDS DETECTED — SHOW YOUR HANDS';
+  }
+}
+
+// Init MediaPipe Hands
+const hands = new Hands({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+  maxNumHands: 2,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.6
+});
+
+hands.onResults(onResults);
+
+// Start camera
+const camera = new Camera(video, {
+  onFrame: async () => {
+    canvas.width  = video.videoWidth  || canvas.width;
+    canvas.height = video.videoHeight || canvas.height;
+    await hands.send({ image: video });
+  },
+  width: 720,
+  height: 540
+});
+
+camera.start().then(() => {
+  statusEl.textContent = 'CAMERA READY — SHOW YOUR HANDS';
+}).catch(err => {
+  statusEl.textContent = 'CAMERA ERROR: ' + err.message;
+});
+</script>
+</body>
+</html>
