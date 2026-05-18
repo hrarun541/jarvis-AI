@@ -1,1 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>J.A.R.V.I.S</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+:root {
+  --blue:  #00b4ff;
+  --green: #00ffaa;
+  --red:   #ff4444;
+  --dim:   rgba(0,180,255,0.15);
+  --bg:    #060c18;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--blue); font-family: 'Rajdhani', sans-serif; overflow: hidden; }
+
+#bg-canvas { position: fixed; inset: 0; z-index: 0; opacity: 0.35; }
+
+.shell { position: relative; z-index: 1; height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
+
+/* HEADER */
+header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1.1rem 1.5rem;
+  border-bottom: 1px solid var(--dim);
+  background: rgba(6,12,24,0.75);
+  backdrop-filter: blur(12px);
+  z-index: 10;
+}
+.logo { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 5px; color: var(--blue); opacity: 0.8; }
+.header-right { display: flex; align-items: center; gap: 1.5rem; }
+.sys-info { display: flex; gap: 1.5rem; font-family: 'Share Tech Mono', monospace; font-size: 11px; opacity: 0.4; }
+.sys-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); margin-right: 6px; animation: blink 2.5s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+.apps-btn {
+  font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 3px;
+  color: var(--blue); background: rgba(0,180,255,0.06);
+  border: 1px solid rgba(0,180,255,0.25); border-radius: 4px;
+  padding: 6px 14px; cursor: pointer; user-select: none;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+.apps-btn:hover, .apps-btn.open { background: rgba(0,180,255,0.14); border-color: var(--blue); color: #fff; }
+
+/* PANEL OVERLAY */
+.panel-overlay { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,0.55); opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+.panel-overlay.show { opacity: 1; pointer-events: all; }
+
+/* SIDE PANEL */
+.side-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 340px; z-index: 51;
+  background: #07101f; border-left: 1px solid rgba(0,180,255,0.18);
+  display: flex; flex-direction: column;
+  transform: translateX(100%); transition: transform 0.35s cubic-bezier(.4,0,.2,1);
+}
+.side-panel.show { transform: translateX(0); }
+
+.panel-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1.1rem 1.2rem; border-bottom: 1px solid rgba(0,180,255,0.1); flex-shrink: 0;
+}
+.panel-title { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 4px; color: var(--blue); opacity: 0.65; }
+.panel-close { font-size: 18px; cursor: pointer; color: rgba(0,180,255,0.35); background: none; border: none; line-height: 1; transition: color 0.2s; }
+.panel-close:hover { color: var(--blue); }
+
+.panel-add { padding: 1rem 1.2rem; border-bottom: 1px solid rgba(0,180,255,0.08); flex-shrink: 0; }
+.panel-add-title { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 2px; color: rgba(0,180,255,0.35); margin-bottom: 8px; }
+
+.field-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.field-row input {
+  background: rgba(0,180,255,0.04); border: 1px solid rgba(0,180,255,0.14);
+  border-radius: 3px; color: #c0e8ff;
+  font-family: 'Share Tech Mono', monospace; font-size: 12px;
+  padding: 7px 10px; outline: none; transition: border-color 0.2s;
+}
+.field-row input::placeholder { color: rgba(0,180,255,0.22); }
+.field-row input:focus { border-color: rgba(0,180,255,0.4); }
+
+.add-btn {
+  width: 100%; font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 2px;
+  color: var(--bg); background: var(--blue); border: none; border-radius: 3px;
+  padding: 8px; cursor: pointer; transition: opacity 0.2s;
+}
+.add-btn:hover { opacity: 0.85; }
+.add-err { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--red); margin-top: 5px; min-height: 14px; }
+
+.apps-list { flex: 1; overflow-y: auto; padding: 0.4rem 0; }
+.apps-list::-webkit-scrollbar { width: 4px; }
+.apps-list::-webkit-scrollbar-thumb { background: rgba(0,180,255,0.12); border-radius: 2px; }
+
+.app-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 1.2rem; cursor: pointer;
+  border-bottom: 1px solid rgba(0,180,255,0.05);
+  transition: background 0.15s;
+}
+.app-item:hover { background: rgba(0,180,255,0.05); }
+
+.app-favicon {
+  width: 28px; height: 28px; border-radius: 4px;
+  background: rgba(0,180,255,0.07); border: 1px solid rgba(0,180,255,0.1);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0; overflow: hidden;
+  font-family: 'Share Tech Mono', monospace; color: var(--blue);
+}
+.app-favicon img { width: 100%; height: 100%; object-fit: cover; border-radius: 3px; }
+
+.app-info { flex: 1; min-width: 0; }
+.app-name { font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 14px; color: #c0e8ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-url { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: rgba(0,180,255,0.28); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.app-actions { display: flex; gap: 5px; flex-shrink: 0; }
+.app-open-btn, .app-del-btn {
+  font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 1px;
+  border-radius: 3px; padding: 3px 8px; cursor: pointer; border: 1px solid; line-height: 1.4;
+  transition: all 0.2s;
+}
+.app-open-btn { color: var(--green); border-color: rgba(0,255,170,0.2); background: rgba(0,255,170,0.04); }
+.app-open-btn:hover { background: rgba(0,255,170,0.12); }
+.app-del-btn { color: rgba(255,68,68,0.45); border-color: rgba(255,68,68,0.12); background: transparent; }
+.app-del-btn:hover { color: var(--red); border-color: rgba(255,68,68,0.35); background: rgba(255,68,68,0.05); }
+
+.empty-apps { text-align: center; padding: 2.5rem 1rem; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: rgba(0,180,255,0.18); line-height: 2.2; }
+
+/* MAIN */
+main { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.6rem; padding: 1rem; }
+
+.arc-wrapper { position: relative; width: 280px; height: 280px; display: flex; align-items: center; justify-content: center; }
+.arc { position: absolute; border-radius: 50%; border: 1px solid transparent; }
+.arc1 { width: 100%; height: 100%; border-color: rgba(0,180,255,0.15); animation: spin 14s linear infinite; }
+.arc1::before { content:''; position:absolute; inset:-1px; border-radius:50%; border:1px solid var(--blue); clip-path:polygon(0 0,40% 0,40% 100%,0 100%); }
+.arc2 { width: 86%; height: 86%; border-color: rgba(0,180,255,0.1); animation: spin 10s linear infinite reverse; }
+.arc2::before { content:''; position:absolute; inset:-1px; border-radius:50%; border:1px solid rgba(0,180,255,0.5); clip-path:polygon(60% 0,100% 0,100% 50%,60% 50%); }
+.arc3 { width: 72%; height: 72%; border-color: rgba(0,180,255,0.08); animation: spin 8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.orb {
+  position: relative; z-index: 5; width: 120px; height: 120px; border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #1155cc, #041033 60%, #020818 100%);
+  border: 1.5px solid rgba(0,180,255,0.4);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: border-color 0.3s, box-shadow 0.3s; user-select: none;
+}
+.orb:hover { border-color: var(--blue); box-shadow: 0 0 30px rgba(0,180,255,0.2); }
+.orb.listening { border-color: var(--green); box-shadow: 0 0 40px rgba(0,255,170,0.25), 0 0 80px rgba(0,255,170,0.1); animation: orb-breath 1.2s ease-in-out infinite; }
+.orb.error { border-color: var(--red); box-shadow: 0 0 30px rgba(255,68,68,0.2); }
+@keyframes orb-breath { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+.orb-mic { font-size: 34px; line-height: 1; transition: transform 0.3s; }
+.orb.listening .orb-mic { transform: scale(1.15); }
+
+.wave-bars { display:flex; align-items:flex-end; gap:3px; height:28px; opacity:0; transition:opacity 0.3s; }
+.wave-bars.active { opacity: 1; }
+.wave-bars span { display:block; width:3px; background:var(--green); border-radius:2px; min-height:4px; animation:wave 0.8s ease-in-out infinite; }
+.wave-bars span:nth-child(1){animation-delay:0s}.wave-bars span:nth-child(2){animation-delay:.1s}.wave-bars span:nth-child(3){animation-delay:.2s}.wave-bars span:nth-child(4){animation-delay:.1s}.wave-bars span:nth-child(5){animation-delay:0s}
+@keyframes wave { 0%,100%{height:4px} 50%{height:24px} }
+
+.status-label { font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:3px; color:var(--blue); opacity:0.5; text-transform:uppercase; min-height:18px; text-align:center; transition:color .3s,opacity .3s; }
+.status-label.active { opacity:1; color:var(--green); }
+.status-label.error  { opacity:1; color:var(--red); }
+
+.transcript { font-family:'Share Tech Mono',monospace; font-size:14px; color:#c0e8ff; text-align:center; min-height:22px; max-width:480px; line-height:1.5; opacity:0; transform:translateY(4px); transition:opacity .3s,transform .3s; }
+.transcript.show { opacity:1; transform:none; }
+
+.response { font-size:15px; font-weight:600; letter-spacing:1px; color:var(--green); text-align:center; min-height:22px; max-width:480px; opacity:0; transform:translateY(4px); transition:opacity .3s,transform .3s; }
+.response.show { opacity:1; transform:none; }
+.response.error-msg { color:var(--red); }
+
+.sites { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; max-width:500px; }
+.pill { font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1px; color:rgba(0,180,255,.4); border:1px solid rgba(0,180,255,.1); border-radius:3px; padding:3px 10px; text-transform:uppercase; transition:color .2s,border-color .2s; cursor:default; }
+.pill:hover { color:var(--blue); border-color:rgba(0,180,255,.35); }
+
+footer { display:flex; justify-content:center; align-items:center; padding:0.9rem 2rem; border-top:1px solid var(--dim); background:rgba(6,12,24,0.65); backdrop-filter:blur(10px); }
+.hint { font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:2px; color:rgba(0,180,255,.22); text-align:center; }
+.hint strong { color:rgba(0,180,255,.45); }
+</style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<div class="panel-overlay" id="panelOverlay" onclick="closePanel()"></div>
+
+<div class="side-panel" id="sidePanel">
+  <div class="panel-header">
+    <span class="panel-title">// MY APPS</span>
+    <button class="panel-close" onclick="closePanel()">✕</button>
+  </div>
+  <div class="panel-add">
+    <div class="panel-add-title">ADD NEW APP</div>
+    <div class="field-row">
+      <input type="text" id="appName" placeholder="Name  (e.g. YouTube)" autocomplete="off" />
+      <input type="text" id="appUrl"  placeholder="URL   (e.g. https://youtube.com)" autocomplete="off" />
+    </div>
+    <button class="add-btn" onclick="addApp()">+ ADD APP</button>
+    <div class="add-err" id="addErr"></div>
+  </div>
+  <div class="apps-list" id="appsList"></div>
+</div>
+
+<div class="shell">
+  <header>
+    <div class="logo">J.A.R.V.I.S &nbsp;// VOICE OS v4.2</div>
+    <div class="header-right">
+      <div class="sys-info">
+        <span><span class="sys-dot"></span>SYS ONLINE</span>
+        <span id="clock">--:--:--</span>
+      </div>
+      <button class="apps-btn" id="appsBtn" onclick="togglePanel()">⊞ APPS</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="arc-wrapper">
+      <div class="arc arc1"></div>
+      <div class="arc arc2"></div>
+      <div class="arc arc3"></div>
+      <div class="orb" id="orb" onclick="toggleListen()" title="Click to speak">
+        <span class="orb-mic" id="orbMic">🎤</span>
+      </div>
+    </div>
+    <div class="wave-bars" id="waveBars">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <div class="status-label" id="statusLabel">TAP ORB TO ACTIVATE</div>
+    <div class="transcript" id="transcript"></div>
+    <div class="response"   id="response"></div>
+    <div class="sites"      id="sitesGrid"></div>
+  </main>
+
+  <footer>
+    <p class="hint">Say <strong>"JARVIS OPEN YOUTUBE"</strong> &nbsp;·&nbsp; Add custom sites via <strong>⊞ APPS</strong> &nbsp;·&nbsp; Chrome &amp; Edge</p>
+  </footer>
+</div>
+
+<script>
+/* PARTICLES */
+const canvas = document.getElementById('bg-canvas');
+const ctx = canvas.getContext('2d');
+let W, H, particles = [];
+function resize(){ W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+resize(); window.addEventListener('resize', resize);
+class Particle {
+  constructor(){ this.reset(); }
+  reset(){ this.x=Math.random()*W; this.y=Math.random()*H; this.r=Math.random()*1.2+0.3; this.a=Math.random()*Math.PI*2; this.s=Math.random()*0.3+0.05; this.op=Math.random()*0.5+0.1; }
+  update(){ this.x+=Math.cos(this.a)*this.s; this.y+=Math.sin(this.a)*this.s; if(this.x<0||this.x>W||this.y<0||this.y>H) this.reset(); }
+  draw(){ ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,Math.PI*2); ctx.fillStyle=`rgba(0,180,255,${this.op})`; ctx.fill(); }
+}
+for(let i=0;i<120;i++) particles.push(new Particle());
+(function loop(){ ctx.clearRect(0,0,W,H); particles.forEach(p=>{p.update();p.draw();}); requestAnimationFrame(loop); })();
+
+/* CLOCK */
+function tick(){ document.getElementById('clock').textContent = new Date().toTimeString().slice(0,8); }
+tick(); setInterval(tick,1000);
+
+/* BUILT-IN SITES */
+const BUILTIN = {
+  youtube:'https://youtube.com', google:'https://google.com', gmail:'https://mail.google.com',
+  maps:'https://maps.google.com','google maps':'https://maps.google.com',
+  twitter:'https://twitter.com', x:'https://x.com', facebook:'https://facebook.com',
+  instagram:'https://instagram.com', reddit:'https://reddit.com',
+  whatsapp:'https://web.whatsapp.com', netflix:'https://netflix.com',
+  amazon:'https://amazon.com', wikipedia:'https://wikipedia.org', github:'https://github.com',
+  spotify:'https://spotify.com', linkedin:'https://linkedin.com', twitch:'https://twitch.tv',
+  tiktok:'https://tiktok.com', discord:'https://discord.com',
+  chatgpt:'https://chat.openai.com', claude:'https://claude.ai',
+  pinterest:'https://pinterest.com', stackoverflow:'https://stackoverflow.com',
+  'stack overflow':'https://stackoverflow.com', news:'https://news.google.com',
+  weather:'https://weather.com', drive:'https://drive.google.com',
+  'google drive':'https://drive.google.com', docs:'https://docs.google.com',
+  translate:'https://translate.google.com', flipkart:'https://flipkart.com',
+  swiggy:'https://swiggy.com', zomato:'https://zomato.com',
+};
+
+/* CUSTOM APPS */
+function loadApps(){ try{ return JSON.parse(localStorage.getItem('jarvis_apps')||'[]'); }catch(e){ return []; } }
+function saveApps(a){ try{ localStorage.setItem('jarvis_apps',JSON.stringify(a)); }catch(e){} }
+function getDomain(url){ try{ return new URL(url).hostname.replace('www.',''); }catch(e){ return url; } }
+function getFavicon(url){ try{ return `https://www.google.com/s2/favicons?sz=64&domain=${new URL(url).origin}`; }catch(e){ return ''; } }
+
+function renderApps(){
+  const apps = loadApps();
+  const list = document.getElementById('appsList');
+  list.innerHTML = '';
+  if(!apps.length){
+    list.innerHTML = `<div class="empty-apps">No apps added yet.<br/>Type a name &amp; URL above,<br/>then say it to open!</div>`;
+    return;
+  }
+  apps.forEach((app,i) => {
+    const item = document.createElement('div');
+    item.className = 'app-item';
+
+    const fav = document.createElement('div');
+    fav.className = 'app-favicon';
+    const furl = getFavicon(app.url);
+    if(furl){
+      const img = document.createElement('img');
+      img.src = furl;
+      img.onerror = () => { fav.innerHTML=''; fav.textContent = app.name.charAt(0).toUpperCase(); };
+      fav.appendChild(img);
+    } else {
+      fav.textContent = app.name.charAt(0).toUpperCase();
+    }
+
+    const info = document.createElement('div');
+    info.className = 'app-info';
+    info.innerHTML = `<div class="app-name">${escHtml(app.name)}</div><div class="app-url">${escHtml(getDomain(app.url))}</div>`;
+
+    const actions = document.createElement('div');
+    actions.className = 'app-actions';
+
+    const ob = document.createElement('button'); ob.className='app-open-btn'; ob.textContent='OPEN';
+    ob.onclick = (e) => { e.stopPropagation(); window.open(app.url,'_blank'); };
+
+    const db = document.createElement('button'); db.className='app-del-btn'; db.textContent='✕';
+    db.onclick = (e) => { e.stopPropagation(); deleteApp(i); };
+
+    actions.append(ob, db);
+    item.append(fav, info, actions);
+    list.appendChild(item);
+  });
+}
+
+function escHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function addApp(){
+  const nameEl = document.getElementById('appName');
+  const urlEl  = document.getElementById('appUrl');
+  const errEl  = document.getElementById('addErr');
+  const name = nameEl.value.trim();
+  let url = urlEl.value.trim();
+  errEl.textContent = '';
+  if(!name){ errEl.textContent = 'Enter a name.'; return; }
+  if(!url)  { errEl.textContent = 'Enter a URL.';  return; }
+  if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  try{ new URL(url); } catch(e){ errEl.textContent = 'Invalid URL.'; return; }
+  const apps = loadApps();
+  apps.unshift({ name, url });
+  saveApps(apps);
+  nameEl.value = ''; urlEl.value = '';
+  renderApps();
+  speak('App added: ' + name);
+}
+
+function deleteApp(i){
+  const apps = loadApps();
+  apps.splice(i,1);
+  saveApps(apps);
+  renderApps();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('appName').addEventListener('keydown', e => { if(e.key==='Enter') document.getElementById('appUrl').focus(); });
+  document.getElementById('appUrl').addEventListener('keydown',  e => { if(e.key==='Enter') addApp(); });
+  renderApps();
+});
+
+/* PANEL */
+function togglePanel(){
+  const show = !document.getElementById('sidePanel').classList.contains('show');
+  document.getElementById('sidePanel').classList.toggle('show', show);
+  document.getElementById('panelOverlay').classList.toggle('show', show);
+  document.getElementById('appsBtn').classList.toggle('open', show);
+  if(show){ renderApps(); setTimeout(()=>document.getElementById('appName').focus(), 360); }
+}
+function closePanel(){
+  document.getElementById('sidePanel').classList.remove('show');
+  document.getElementById('panelOverlay').classList.remove('show');
+  document.getElementById('appsBtn').classList.remove('open');
+}
+
+/* PILLS */
+const POPULAR = ['YouTube','Google','Instagram','WhatsApp','Netflix','Reddit','GitHub','Spotify','Discord','TikTok'];
+const grid = document.getElementById('sitesGrid');
+POPULAR.forEach(s => { const p=document.createElement('div'); p.className='pill'; p.textContent=s; grid.appendChild(p); });
+
+/* SPEECH ENGINE */
+let recognition = null, listening = false;
+
+function setStatus(text, mode){ const el=document.getElementById('statusLabel'); el.textContent=text; el.className='status-label'+(mode?' '+mode:''); }
+function showTranscript(t){ const el=document.getElementById('transcript'); el.textContent=t; el.classList.toggle('show',!!t); }
+function showResponse(t, isErr){ const el=document.getElementById('response'); el.textContent=t; el.className='response'+(t?' show':'')+(isErr?' error-msg':''); }
+function setListeningUI(val){
+  listening=val;
+  const orb=document.getElementById('orb'), mic=document.getElementById('orbMic'), waves=document.getElementById('waveBars');
+  if(val){ orb.classList.add('listening'); orb.classList.remove('error'); mic.textContent='👂'; waves.classList.add('active'); }
+  else   { orb.classList.remove('listening'); mic.textContent='🎤'; waves.classList.remove('active'); }
+}
+
+function speak(text){
+  if(!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.rate=1.05; u.pitch=0.8; u.volume=1;
+  speechSynthesis.speak(u);
+}
+
+function parseIntent(raw){
+  let text = raw.toLowerCase().trim();
+  text = text.replace(/^(jarvis[,]?\s*)/, '').trim();
+  const opens = ['open','go to','go','launch','show me','take me to','navigate to','visit','load'];
+  for(const o of opens){ if(text.startsWith(o+' ')){ text=text.slice(o.length).trim(); break; } }
+  text = text.replace(/^(the|a|an)\s+/,'').trim();
+
+  if(/\.(com|org|net|io|in|co\.in|tv|me)$/.test(text)) return { name:text, url:'https://'+text };
+
+  // custom apps first
+  for(const app of loadApps()){
+    const n = app.name.toLowerCase();
+    if(n===text || text.includes(n) || n.includes(text)) return { name:app.name, url:app.url };
+  }
+
+  if(BUILTIN[text]) return { name:text, url:BUILTIN[text] };
+  for(const [k,v] of Object.entries(BUILTIN)){
+    if(text.includes(k) || k.includes(text)) return { name:k, url:v };
+  }
+  return null;
+}
+
+function processCommand(raw){
+  showTranscript('"'+raw+'"');
+  setStatus('PROCESSING...','active');
+  const res = parseIntent(raw);
+  if(res){
+    const name = res.name.replace(/\b\w/g,c=>c.toUpperCase());
+    showResponse('Opening '+name+'...');
+    setStatus('LAUNCHING','active');
+    speak('Opening '+name);
+    setTimeout(()=>{ window.open(res.url,'_blank'); setStatus('TAP ORB TO ACTIVATE'); showResponse(''); }, 1100);
+  } else {
+    showResponse('Not recognized. Add it via ⊞ APPS!', true);
+    setStatus('NOT RECOGNIZED','error');
+    document.getElementById('orb').classList.add('error');
+    speak('Sorry, I did not recognize that. You can add it in the Apps panel.');
+    setTimeout(()=>{ setStatus('TAP ORB TO ACTIVATE'); document.getElementById('orb').classList.remove('error'); showResponse(''); }, 3500);
+  }
+}
+
+function toggleListen(){
+  if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){
+    showResponse('Voice recognition not supported. Use Chrome or Edge.', true);
+    setStatus('UNSUPPORTED BROWSER','error'); return;
+  }
+  if(listening){ recognition&&recognition.stop(); setListeningUI(false); setStatus('TAP ORB TO ACTIVATE'); return; }
+  showTranscript(''); showResponse('');
+
+  const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang='en-US'; recognition.interimResults=true; recognition.maxAlternatives=3;
+
+  recognition.onstart = ()=>{ setListeningUI(true); setStatus('LISTENING...','active'); speak('Yes, sir?'); };
+
+  recognition.onresult = (e)=>{
+    let interim='', final='';
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      e.results[i].isFinal?(final+=t):(interim+=t);
+    }
+    showTranscript('"'+(final||interim)+'"');
+    if(final){ recognition.stop(); setListeningUI(false); processCommand(final); }
+  };
+
+  recognition.onerror = (e)=>{
+    setListeningUI(false);
+    if(e.error==='no-speech'){ setStatus('NO SPEECH DETECTED','error'); setTimeout(()=>setStatus('TAP ORB TO ACTIVATE'),2000); }
+    else if(e.error==='not-allowed'){ showResponse('Microphone permission denied.',true); setStatus('PERMISSION DENIED','error'); }
+    else setStatus('TAP ORB TO ACTIVATE');
+  };
+
+  recognition.onend = ()=>setListeningUI(false);
+  recognition.start();
+}
+
+document.addEventListener('keydown', e=>{
+  if(e.code==='Space'&&e.target===document.body){ e.preventDefault(); toggleListen(); }
+  if(e.key==='Escape') closePanel();
+});
+</script>
+</body>
+</html>
